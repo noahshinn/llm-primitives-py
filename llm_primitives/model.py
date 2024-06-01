@@ -1,9 +1,10 @@
 import abc
 
-from typing import List, TypeVar, Union, Optional
+from typing import List, TypeVar, Union, Type, Dict, Any
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
+PartialObj = Dict[str, Any]
 
 
 class Model(abc.ABC):
@@ -15,7 +16,7 @@ class Model(abc.ABC):
         return self.classify(instruction, text, ["true", "false"]) == 0
 
     @abc.abstractmethod
-    def parse(self, text: str) -> Optional[T]:
+    def parse(self, text: str, typ: Type[T]) -> Union[T, PartialObj]:
         raise NotImplementedError
 
     @abc.abstractmethod

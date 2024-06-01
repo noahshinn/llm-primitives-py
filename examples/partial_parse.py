@@ -8,6 +8,6 @@ class Address(BaseModel):
 
 
 model = OpenAIModel(model="gpt-4o")
-addr = model.parse("I live at 123 main st", Address)
-assert isinstance(addr, Address)
-print(f"Street: {addr.street}, Number: {addr.number}")
+addr = model.parse("I live at main st", Address)
+assert isinstance(addr, dict)
+print(f"Partial object: {addr}")

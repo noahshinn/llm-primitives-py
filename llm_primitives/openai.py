@@ -1,9 +1,16 @@
 import enum
 import json
 import os
-from typing import List, Optional, Dict, Any, Type, Union, Tuple
-from pydantic import BaseModel, Json
-from llm_primitives.model import Model, T
+from typing import List, Optional, Dict, Any, Type, Union
+from pydantic import BaseModel
+from llm_primitives.model import Model, T, PartialObj
+from llm_primitives.utils import (
+    force_json_prompt,
+    display_choices,
+    json_response_to_obj_or_partial_obj,
+    type_to_json_schema_string,
+    optionalize_type,
+)
 
 
 class Role(enum.Enum):
@@ -51,7 +58,7 @@ class OpenAIModel(Model):
             model=self.model,
             messages=msgs,
             temperature=0.0,
-            response_format={"type": "json_object"},
+            response_format={"type": "json_object" if force_json else "text"},
         )
         content = res.choices[0].message.content
         assert content is not None
@@ -79,15 +86,16 @@ class OpenAIModel(Model):
             raise ValueError(f"Invalid choice: {choice}")
         return decode_map[choice]
 
-    def parse(self, text: str, typ: Type[T]) -> Optional[T]:
-        json_schema_string = type_to_json_schema_string(typ)
+    def parse(self, text: str, typ: Type[T]) -> Union[T, PartialObj]:
+        optionalized_typ = optionalize_type(typ)
+        json_schema_string = type_to_json_schema_string(optionalized_typ)
         input_text = force_json_prompt(
             f"Text:\n{text}\n\nSchema:\n{json_schema_string}"
         )
         messages = [
             Message(
                 role=Role.SYSTEM,
-                content="Parse the following text with the provided schema.",
+                content="Parse the following text with the provided JSON schema.",
             ),
             Message(
                 role=Role.USER,
@@ -97,7 +105,7 @@ class OpenAIModel(Model):
         res = self.generate_message(messages, force_json=True)
         if res.obj is None:
             return None
-        return json_response_to_obj(res.obj, typ)
+        return json_response_to_obj_or_partial_obj(response=res.obj, typ=typ)
 
     def generate_text(self, instruction: str, text: str) -> str:
         messages = [
@@ -140,35 +148,3 @@ class OpenAIModel(Model):
         if score < min or score > max:
             raise ValueError(f"Invalid score value: {score}")
         return typ(score)
-
-
-def force_json_prompt(text: str) -> str:
-    return f"{text}\n\nValid JSON:"
-
-
-def display_choices(choices: List[str]) -> Tuple[str, Dict[str, int]]:
-    choice_displays = []
-    decode_map = {}
-    for i, choice in enumerate(choices):
-        label = index_to_alpha(i)
-        choice_display = f"{label}. {choice}"
-        choice_displays.append(choice_display)
-        decode_map[label] = i
-    return "\n".join(choice_displays), decode_map
-
-
-def index_to_alpha(index: int) -> str:
-    alpha = ""
-    while index >= 0:
-        alpha = chr(index % 26 + ord("A")) + alpha
-        index = index // 26 - 1
-    return alpha
-
-
-def type_to_json_schema_string(typ: Type[T]) -> str:
-    json_schema = typ.model_json_schema()
-    return json.dumps(json_schema, indent=4)
-
-
-def json_response_to_obj(response: Json[Any], typ: Type[T]) -> T:
-    return typ.model_validate(response)
